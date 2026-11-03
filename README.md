@@ -4,7 +4,15 @@ Offline tools that decode Genshin Impact's IL2CPP metadata and turn it into file
 
 ## Supported game build
 
-The scripts check their inputs against the September 2026 build before reading them.
+The scripts check their inputs against the game 7.2 build, released on November 4, 2026, before reading them.
+
+| File | Size (bytes) | SHA-256 |
+|---|---|---|
+| `GenshinImpact.exe` | 451,130,280 | `b3001fc110b63e0e0ce24a77386e71d0eefaffaae244ea0c72645a659cb5ea6e` |
+| `global-metadata.dat` | 83,644,132 | `4ed10538735861ad87b027d30039e2afb92e334f1b4de4f643e17c9c79d19fd7` |
+| `startup-metadata.dat` | 4,116,228 | `2a5fe7adbeb7cba81db69d7c62dee3536615e5b77efa0514c464e9c9e72d93c0` |
+
+The `7.1` branch holds the tools for the previous build, with these hashes:
 
 | File | SHA-256 |
 |---|---|
