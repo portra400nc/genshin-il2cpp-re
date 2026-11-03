@@ -1,0 +1,12 @@
+# Game files and everything derived from them stay local
+game/
+out/
+*.exe
+*.dat
+*.dll
+*.zip
+
+bin/
+obj/
+__pycache__/
+.DS_Store
