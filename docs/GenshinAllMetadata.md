@@ -11,14 +11,14 @@ python3 python/export_genshin_metadata.py \
   --all-images
 ```
 
-The current export contains 88,902 named types, 733,442 methods, 440,172
-fields, and 711,021 non-null native method addresses. Two slots in the
-88,904-entry type-definition table are outside the 75 image ranges. The
-output is about 181 MiB and stays in ignored `out/` rather than Git.
+The current export contains 89,746 named types, 741,021 methods, 445,462
+fields, and 718,578 non-null native method addresses. Two slots in the
+89,748-entry type-definition table are outside the 75 image ranges. The
+output is about 187 MiB and stays in ignored `out/` rather than Git.
 
 This is a complete image metadata map for the matched build. It identifies
 method names and native addresses. It does not reconstruct C# method bodies
 from native code. `ghidra/` has small scripts for decompiling
 specific native functions when a bridge or wrapper needs one. A full Ghidra
-decompilation of all 711,021 addressed methods would create a much larger
+decompilation of all 718,578 addressed methods would create a much larger
 artifact without verifying that UnityExplorer's calls work at runtime.

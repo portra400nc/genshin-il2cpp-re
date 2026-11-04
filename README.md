@@ -20,7 +20,7 @@ The `7.1` branch holds the tools for the previous build, with these hashes:
 | `global-metadata.dat` | `05ae04d7a91b91cc880217a56b0b01f3e67f845b06e894216654ec5d160e0da0` |
 | `startup-metadata.dat` | `66c684950af332966887cfd6f5263a05704230999ee290c27d5b3bdb8a713923` |
 
-A new game build needs new constants in `python/decode_genshin_strings.py` and `python/inspect_genshin_images.py`, and the offsets they pin must be derived again.
+A new game build re-rolls every obfuscation constant, and can change formulas, header and record field offsets, and the order of record fields. The build constants live in `python/decode_genshin_strings.py`, `python/inspect_genshin_images.py`, `python/inspect_genshin_types.py`, `python/decode_genshin_usages.py`, `python/decode_genshin_generic_classes.py`, and `python/inspect_genshin_generic_insts.py`. The anchors in `python/export_genshin_metadata.py` and the code checks in `python/inspect_genshin_api.py` also name indices and addresses of one build.
 
 ## Layout
 

@@ -31,7 +31,7 @@ CoreModule component helpers to call class-handle overloads because Genshin
 lacks the reflection API used by the generated generic methods. It also
 replaces 11 named `Color` getters with literal values after the first
 UnityExplorer run raised a native exception in `Color.white`. Cecil changes
-method tokens when it writes CoreModule, so the tool remaps its 5,143 method
+method tokens when it writes CoreModule, so the tool remaps its 5,146 method
 addresses in `MethodAddressToToken.db` and verifies known entries afterward.
 
 The batch tool reconstructs property metadata from exported `get_` and `set_`
@@ -40,7 +40,7 @@ CoreModule and UI properties are checked after generation. The dummy assemblies
 are still incomplete. The batch tool infers method-generic
 parameter positions from the indices referenced by each signature; it does
 not yet decode generic containers or unused generic parameters. The exporter
-resolves 13 generic instantiations from the matched Deck type-name logs and
+resolves 13 generic instantiations that the 7.1 build's Deck type-name logs named and
 leaves all other instances undecoded. The MHY subset also lacks exact nested
 ownership, field offsets, custom attributes, and some images. The batch tool omits
 signatures it cannot represent and records counts in `report.json`. It also

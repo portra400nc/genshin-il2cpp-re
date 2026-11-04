@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decode metadata strings for the inspected September 2026 Genshin build."""
+"""Decode metadata strings for the inspected Genshin 7.2 build."""
 
 import argparse
 import hashlib
@@ -7,9 +7,9 @@ import struct
 from pathlib import Path
 
 
-EXE_SHA256 = "08a3086d5f3fe695f01dab61efa42e442006b18e5e475b2520df356f6a073b7d"
-METADATA_SHA256 = "05ae04d7a91b91cc880217a56b0b01f3e67f845b06e894216654ec5d160e0da0"
-HEADER_FILE_OFFSET = 0x27D3BD0
+EXE_SHA256 = "b3001fc110b63e0e0ce24a77386e71d0eefaffaae244ea0c72645a659cb5ea6e"
+METADATA_SHA256 = "4ed10538735861ad87b027d30039e2afb92e334f1b4de4f643e17c9c79d19fd7"
+HEADER_FILE_OFFSET = 0x2806360
 BODY_FILE_OFFSET = 0x210
 MASK64 = (1 << 64) - 1
 ANCHORS = {
@@ -28,13 +28,17 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def string_section(header: bytes) -> int:
+    return (struct.unpack_from("<I", header, 0x1C4)[0] + 0xB7F07125) & 0xFFFFFFFF
+
+
 def decode_string(stream, string_section: int, index: int) -> str:
     if index == 0xFFFFFFFF:
         return ""
     offset = index & 0xFFFFFF
     length = index >> 24
-    key = (0x694418957C890198 * offset & MASK64) ^ 0x55A357D81EF0E48B
-    key = 0x5C2B4E660E2D0544 * key & MASK64
+    key = (0x6838EB6663769160 * offset - 0x54E2A947F9BBD4F0) & MASK64 ^ 0x49F2143B1E15D9FC
+    key = 0x6D1C485921CA3D0F * key & MASK64
     stream.seek(BODY_FILE_OFFSET + string_section + offset)
     encoded = stream.read((length + 7) // 8 * 8)
     if len(encoded) != (length + 7) // 8 * 8:
@@ -43,7 +47,7 @@ def decode_string(stream, string_section: int, index: int) -> str:
     for pos in range(0, len(encoded), 8):
         block = struct.unpack_from("<Q", encoded, pos)[0]
         decoded.extend((block ^ key).to_bytes(8, "little"))
-        key = (key + 0x6B0B40C349AE61E5) & MASK64
+        key = (key + 0x7E3422D00C531C8C) & MASK64
     return decoded[:length].split(b"\0", 1)[0].decode("utf-8")
 
 
@@ -58,15 +62,15 @@ def main() -> None:
 
     with args.exe.open("rb") as exe:
         exe.seek(HEADER_FILE_OFFSET)
-        header = exe.read(0x188)
-    if len(header) != 0x188 or header[:4] != b"MHY\0":
+        header = exe.read(0x210)
+    if len(header) != 0x210 or header[:4] != b"MHY\0":
         raise ValueError("embedded metadata header is missing")
-    string_section = (struct.unpack_from("<I", header, 0x184)[0] + 0xBF9D4735) & 0xFFFFFFFF
-    print(f"String section offset from metadata body: 0x{string_section:x}")
+    section = string_section(header)
+    print(f"String section offset from metadata body: 0x{section:x}")
 
     with args.metadata.open("rb") as metadata:
         for index in args.indices or ANCHORS:
-            value = decode_string(metadata, string_section, index)
+            value = decode_string(metadata, section, index)
             if not args.indices and value != ANCHORS[index]:
                 raise ValueError(f"anchor 0x{index:08x} decoded as {value!r}")
             print(f"0x{index:08x} {value}")

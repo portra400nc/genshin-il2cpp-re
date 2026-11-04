@@ -2,10 +2,10 @@
 """Decode the generic definition and arguments of every generic-instance Il2CppType in the matched Genshin build.
 
 A kind-0x15 Il2CppType stores an index into the runtime generic-class list.
-The metadata initializer at RVA 0x535147 builds that list in order from an
-8-byte table in startup-metadata.dat: an int32 generic-instance index, then
-the generic type definition. The table offset and length come from the
-embedded header's +0x1F8 and +0xD4 fields.
+The metadata initializer at RVA 0x53F750 builds that list in order from an
+8-byte table in startup-metadata.dat: the generic type definition, then an
+int32 generic-instance index. The table offset and length come from the
+embedded header's +0x6C and +0xF0 fields.
 """
 
 import argparse
@@ -14,28 +14,24 @@ import struct
 from pathlib import Path
 
 from decode_genshin_strings import EXE_SHA256, HEADER_FILE_OFFSET, sha256
+from inspect_genshin_images import STARTUP_SHA256, s32
 from inspect_genshin_types import EXPECTED_TYPE_COUNT, MAX_STATIC_TYPE_INDEX, TYPE_ARRAY_FILE_OFFSET
 
 
-STARTUP_SHA256 = "66c684950af332966887cfd6f5263a05704230999ee290c27d5b3bdb8a713923"
 M32 = 0xFFFFFFFF
 GENERIC_INSTANCE_KIND = 0x15
-TABLE_OFFSET_FIELD = 0x1F8
-TABLE_OFFSET_BIAS = 0x7A409361
-TABLE_BYTES_FIELD = 0xD4
-TABLE_BYTES_BIAS = 0xDD1C37D5
 KINDS_WITH_DEFINITION = (0x11, 0x12)
 
 # Generic class index -> (definition, argument definitions), from the
-# exporter's Deck-verified generic types: IList<UICharInfo>, IList<UILineInfo>,
+# exporter's generic types, which the 7.1 build's Deck logs named: IList<UICharInfo>, IList<UILineInfo>,
 # List<Dropdown.OptionData>, ExecuteEvents.EventFunction<ISelectHandler> and
 # UnityEvent<Vector2>.
 ANCHORS = {
-    0xD47: (1253, [2721]),
-    0xD5C: (1253, [2722]),
-    0x13AC: (1258, [3487]),
-    0x164D: (3647, [3636]),
-    0x1524: (2607, [2536]),
+    0xD44: (1250, [2718]),
+    0xD59: (1250, [2719]),
+    0x13A9: (1255, [3485]),
+    0x164B: (3645, [3634]),
+    0x1522: (2604, [2533]),
 }
 
 
@@ -66,15 +62,15 @@ def main() -> None:
     startup = args.startup_metadata.read_bytes()
     instances = json.loads(args.generic_insts.read_text())["instances"]
     header = exe[HEADER_FILE_OFFSET : HEADER_FILE_OFFSET + 0x210]
-    table = (struct.unpack_from("<I", header, TABLE_OFFSET_FIELD)[0] - TABLE_OFFSET_BIAS) & M32
-    count = ((struct.unpack_from("<I", header, TABLE_BYTES_FIELD)[0] + TABLE_BYTES_BIAS) & M32) >> 3
+    table = (s32(header, 0x6C) ^ 0x511D9E20) & M32
+    count = (s32(header, 0xF0) >> 3) ^ 0x0C041BE3
     if table + 8 * count > len(startup):
         raise ValueError(f"generic class table at 0x{table:x} with {count} records extends past the file")
 
     def generic_class(index: int) -> tuple[int, list[int]]:
         if not 0 <= index < count:
             raise ValueError(f"generic class index {index} is outside the {count}-record table")
-        instance, definition = struct.unpack_from("<iI", startup, table + 8 * index)
+        definition, instance = struct.unpack_from("<Ii", startup, table + 8 * index)
         if definition >= EXPECTED_TYPE_COUNT or not 0 <= instance < len(instances):
             raise ValueError(f"generic class {index} has definition {definition} and instance {instance}")
         return definition, instances[instance]

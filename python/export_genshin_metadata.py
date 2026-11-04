@@ -15,11 +15,13 @@ from decode_genshin_strings import (
     METADATA_SHA256,
     decode_string,
     sha256,
+    string_section,
 )
 from inspect_genshin_images import (
     IMAGE_COUNT,
     STARTUP_SHA256,
-    image_key,
+    image_fields,
+    image_table,
     u32,
 )
 from inspect_genshin_types import (
@@ -30,36 +32,42 @@ from inspect_genshin_types import (
     IL2CPP_CODE_RVA_START,
     MAX_STATIC_TYPE_INDEX,
     METHOD_POINTER_ARRAY_FILE_OFFSET,
-    PARENT_TYPE_BIAS,
-    TYPE_FLAGS_BIAS,
     TYPE_ARRAY_FILE_OFFSET,
     TYPE_ARRAY_VA,
     TYPE_STRIDE,
     field_default_values,
     field_details,
+    field_section,
     member_ranges,
     method_details,
+    method_section,
     parameter_details,
+    parameter_section,
+    type_flags,
+    type_names,
+    type_parent,
+    type_section,
 )
 
 
-# Names from matched Deck logs: fdab0c9cf8656d5b9ad54a8efb539c907406618988448bd887cf22cba75d1569
-# and e6af30865cd5baf23d022404f97e0c15d6a044fbda7c144e7a4ae3d3a9f24010.
+# The generic instances that the 7.1 build's Deck logs named, found again in this build by their
+# generic definition and argument, or by the parameter that uses them: UnityEvent`1.AddListener(call)
+# for UnityAction<T0> and ExecuteEvents.Execute(target, eventData, functor) for EventFunction<T>.
 # Other kind-21 entries remain unresolved.
 GENERIC_INSTANCE_TYPES = {
-    3663: (0xD47, 1253, (18, 2721), "System.Collections.Generic.IList<UnityEngine.UICharInfo>"),
-    3685: (0xD5C, 1253, (18, 2722), "System.Collections.Generic.IList<UnityEngine.UILineInfo>"),
-    5396: (0x13AC, 1258, (17, 3487), "System.Collections.Generic.List<UnityEngine.UI.Dropdown.OptionData>"),
-    5573: (0x1456, 1258, (18, 3651), "System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>"),
-    6067: (0x1632, 3647, (17, 3637), "UnityEngine.EventSystems.ExecuteEvents.EventFunction<UnityEngine.EventSystems.IDeselectHandler>"),
-    6096: (0x164D, 3647, (17, 3636), "UnityEngine.EventSystems.ExecuteEvents.EventFunction<UnityEngine.EventSystems.ISelectHandler>"),
-    447975: (0x61EB4, 2606, (19, 0), "UnityEngine.Events.UnityAction<T0>"),
-    450948: (0x61EC8, 3647, (30, 0), "UnityEngine.EventSystems.ExecuteEvents.EventFunction<T>"),
-    3514: (0xCC4, 2607, (8, 0), "UnityEngine.Events.UnityEvent<System.Int32>"),
-    5709: (0x14DA, 2607, (14, 0), "UnityEngine.Events.UnityEvent<System.String>"),
-    5786: (0x1523, 2607, (12, 0), "UnityEngine.Events.UnityEvent<System.Single>"),
-    5787: (0x1524, 2607, (17, 2536), "UnityEngine.Events.UnityEvent<UnityEngine.Vector2>"),
-    5476: (0x13F8, 2607, (2, 0), "UnityEngine.Events.UnityEvent<System.Boolean>"),
+    3660: (0xD44, 1250, (17, 2718), "System.Collections.Generic.IList<UnityEngine.UICharInfo>"),
+    3682: (0xD59, 1250, (17, 2719), "System.Collections.Generic.IList<UnityEngine.UILineInfo>"),
+    5393: (0x13A9, 1255, (18, 3485), "System.Collections.Generic.List<UnityEngine.UI.Dropdown.OptionData>"),
+    5570: (0x1453, 1255, (17, 3649), "System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>"),
+    6065: (0x1630, 3645, (18, 3635), "UnityEngine.EventSystems.ExecuteEvents.EventFunction<UnityEngine.EventSystems.IDeselectHandler>"),
+    6094: (0x164B, 3645, (18, 3634), "UnityEngine.EventSystems.ExecuteEvents.EventFunction<UnityEngine.EventSystems.ISelectHandler>"),
+    453026: (0x631B8, 2603, (19, 0), "UnityEngine.Events.UnityAction<T0>"),
+    456002: (0x631CC, 3645, (30, 0), "UnityEngine.EventSystems.ExecuteEvents.EventFunction<T>"),
+    3511: (0xCC1, 2604, (8, 0), "UnityEngine.Events.UnityEvent<System.Int32>"),
+    5706: (0x14D7, 2604, (14, 0), "UnityEngine.Events.UnityEvent<System.String>"),
+    5784: (0x1521, 2604, (12, 0), "UnityEngine.Events.UnityEvent<System.Single>"),
+    5785: (0x1522, 2604, (17, 2533), "UnityEngine.Events.UnityEvent<UnityEngine.Vector2>"),
+    5473: (0x13F5, 2604, (2, 0), "UnityEngine.Events.UnityEvent<System.Boolean>"),
 }
 
 
@@ -161,9 +169,9 @@ def main() -> None:
         if type_array[16 * index + 0xA] in (0x0F, 0x1D):
             type_reference(type_array, index, set())
             indirect_type_count += 1
-    if indirect_type_count != 9603:
-        raise ValueError(f"expected 9603 pointer and array types, found {indirect_type_count}")
-    for index, element_index, element_kind in ((4239, 17, 5), (15484, 1, 0x1C),
+    if indirect_type_count != 9752:
+        raise ValueError(f"expected 9752 pointer and array types, found {indirect_type_count}")
+    for index, element_index, element_kind in ((4236, 17, 5), (15514, 1, 0x1C),
                                                (452, 70, 8)):
         element = type_reference(type_array, index, set()).get("element_type")
         if element != type_reference(type_array, element_index, set()) or element["kind"] != element_kind:
@@ -171,13 +179,12 @@ def main() -> None:
     if len(method_pointers) != 8 * EXPECTED_METHOD_COUNT:
         raise ValueError("method-pointer array is truncated")
 
-    string_section = (u32(header, 0x184) + 0xBF9D4735) & 0xFFFFFFFF
-    type_section = (u32(header, 0xB4) + 0xEC48AB9F) & 0xFFFFFFFF
-    type_size = (u32(header, 0xE0) + 0xE2F9B07D) & 0xFFFFFFFF
-    method_section = (u32(header, 0x16C) + 0xE33589AC) & 0xFFFFFFFF
-    field_section = (u32(header, 0x18C) + 0xEBF0392C) & 0xFFFFFFFF
-    parameter_section = u32(header, 0x114) ^ 0x3E5D33E6
-    image_section = (u32(header, 0x20C) + 0xF134D80B) & 0xFFFFFFFF
+    strings = string_section(header)
+    type_base, type_size = type_section(header)
+    method_base = method_section(header)
+    field_base = field_section(header)
+    parameter_base = parameter_section(header)
+    image_section = image_table(header)
     if type_size != EXPECTED_TYPE_COUNT * TYPE_STRIDE:
         raise ValueError("unexpected type-definition table length")
 
@@ -188,10 +195,8 @@ def main() -> None:
     with args.metadata.open("rb") as metadata:
         for image_index in range(IMAGE_COUNT):
             image = startup[image_section + 40 * image_index:image_section + 40 * (image_index + 1)]
-            key = image_key(image_index)
-            name = decode_string(metadata, string_section, u32(image, 0x20) ^ key ^ 0x772FA51E)
-            start = u32(image, 0x0C) ^ key ^ 0x38EAB186 ^ 0x4B1CB1C1
-            count = ((u32(image, 0x14) + 0xAA3CAE09) & 0xFFFFFFFF) ^ key
+            name_index, start, count = image_fields(image, image_index)
+            name = decode_string(metadata, strings, name_index)
             if start + count > EXPECTED_TYPE_COUNT:
                 raise ValueError(f"image {name} has an invalid type range")
             image_ranges.append((name, start, count))
@@ -213,7 +218,7 @@ def main() -> None:
             parser.error(f"unknown image(s): {', '.join(sorted(unknown))}")
 
         defaults = field_default_values(metadata, header, type_array)
-        metadata.seek(BODY_FILE_OFFSET + type_section)
+        metadata.seek(BODY_FILE_OFFSET + type_base)
         type_records = metadata.read(type_size)
         if len(type_records) != type_size:
             raise ValueError("type-definition table is truncated")
@@ -226,25 +231,24 @@ def main() -> None:
             image_types = []
             for definition_index in range(start, start + count):
                 record = type_records[definition_index * TYPE_STRIDE:(definition_index + 1) * TYPE_STRIDE]
-                namespace_index = (u32(record, 0) + 0xBBB4CF40) & 0xFFFFFFFF
-                name_index = (u32(record, 0x24) + 0xFBAD8E98) & 0xFFFFFFFF
-                namespace = decode_string(metadata, string_section, namespace_index)
-                type_name = decode_string(metadata, string_section, name_index)
-                parent_index = (u32(record, 0x18) + PARENT_TYPE_BIAS) & 0xFFFFFFFF
-                type_flags = (u32(record, 0x28) - TYPE_FLAGS_BIAS) & 0xFFFFFFFF
-                if type_flags & ~0x1FFFFF:
-                    raise ValueError(f"type {definition_index} has implausible attributes 0x{type_flags:x}")
+                namespace_index, name_index = type_names(record)
+                namespace = decode_string(metadata, strings, namespace_index)
+                type_name = decode_string(metadata, strings, name_index)
+                parent_index = type_parent(record)
+                flags = type_flags(record)
+                if flags & ~0x1FFFFF:
+                    raise ValueError(f"type {definition_index} has implausible attributes 0x{flags:x}")
                 (method_start, method_count), (field_start, field_count) = member_ranges(record)
                 methods = []
                 for method_index in range(method_start, method_start + method_count):
                     method_name, parameter_count, return_index, parameter_start, method_flags = method_details(
-                        metadata, string_section, method_section, method_index)
+                        metadata, strings, method_base, method_index)
                     if parameter_count and parameter_start == 0xFFFFFFFF:
                         raise ValueError(f"method {method_index} has parameters but no start")
                     parameters = []
                     for parameter_index in range(parameter_start, parameter_start + parameter_count):
                         parameter_name, parameter_type = parameter_details(
-                            metadata, string_section, parameter_section, parameter_index)
+                            metadata, strings, parameter_base, parameter_index)
                         parameters.append({"name": parameter_name,
                                            "type": type_reference(type_array, parameter_type, referenced_definitions)})
                     pointer = struct.unpack_from("<Q", method_pointers, 8 * method_index)[0]
@@ -254,7 +258,7 @@ def main() -> None:
                     if method_index == 3392:
                         if (namespace, type_name, method_name, method_flags, code_rva,
                             parameters, type_reference(type_array, return_index, referenced_definitions)) != (
-                                "System", "Type", "<unnamed>", 145, 0x19566F70,
+                                "System", "Type", "<unnamed>", 145, 0x19BC1390,
                                 [{"name": "handle", "type": {"index": 495, "kind": 24}}],
                                 {"index": 9, "kind": 18, "definition": 314}):
                             raise ValueError("System.Type.internal_from_handle anchor differs")
@@ -266,7 +270,7 @@ def main() -> None:
                                     "parameters": parameters})
                 fields = []
                 for field_index in range(field_start, field_start + field_count):
-                    field_name, field_type = field_details(metadata, string_section, field_section, field_index)
+                    field_name, field_type = field_details(metadata, strings, field_base, field_index)
                     if field_type > MAX_STATIC_TYPE_INDEX:
                         raise ValueError(f"field {field_index} has invalid Il2CppType index {field_type}")
                     field_flags = struct.unpack_from("<H", type_array, 16 * field_type + 8)[0]
@@ -280,7 +284,7 @@ def main() -> None:
                     "index": definition_index,
                     "namespace": namespace,
                     "name": type_name,
-                    "flags": type_flags,
+                    "flags": flags,
                     "parent": None if parent_index == 0xFFFFFFFF else type_reference(
                         type_array, parent_index, referenced_definitions),
                     "methods": methods,
@@ -293,8 +297,7 @@ def main() -> None:
         referenced_types = []
         for definition_index in sorted(referenced_definitions):
             record = type_records[definition_index * TYPE_STRIDE:(definition_index + 1) * TYPE_STRIDE]
-            namespace_index = (u32(record, 0) + 0xBBB4CF40) & 0xFFFFFFFF
-            name_index = (u32(record, 0x24) + 0xFBAD8E98) & 0xFFFFFFFF
+            namespace_index, name_index = type_names(record)
             image_index = bisect.bisect_right(image_starts, definition_index) - 1
             image_name = None
             if image_index >= 0:
@@ -303,8 +306,8 @@ def main() -> None:
                     image_name = image
             referenced_types.append({
                 "index": definition_index,
-                "namespace": decode_string(metadata, string_section, namespace_index),
-                "name": decode_string(metadata, string_section, name_index),
+                "namespace": decode_string(metadata, strings, namespace_index),
+                "name": decode_string(metadata, strings, name_index),
                 "image": image_name,
             })
 
@@ -314,16 +317,16 @@ def main() -> None:
     type_anchors = {
         293: ("System", "String", 0x102101),
         371: ("System", "Object", 0x102001),
-        2209: ("UnityEngine", "Application", 0x100101),
-        2279: ("UnityEngine", "GameObject", 0x100101),
+        2206: ("UnityEngine", "Application", 0x100101),
+        2276: ("UnityEngine", "GameObject", 0x100101),
     }
-    method_anchors = {3871: ("Equals", 0x0096), 15974: (".ctor", 0x1886),
-                      16042: ("Quit", 0x0096)}
-    field_anchors = {(251, "MaxValue"): 0x8056, (2377, "m_CachedPtr"): 0x0001}
+    method_anchors = {3871: ("Equals", 0x0096), 15951: (".ctor", 0x1886),
+                      16019: ("Quit", 0x0096)}
+    field_anchors = {(251, "MaxValue"): 0x8056, (2374, "m_CachedPtr"): 0x0001}
     default_anchors = {
         (251, "MaxValue"): {"type": "int32", "value": 2147483647},
         (291, "NaN"): {"type": "single", "value": "NaN"},
-        (2697, "AfterEverything"): {"type": "int32", "value": 22},
+        (2694, "AfterEverything"): {"type": "int32", "value": 22},
     }
     for image in exported:
         for type_info in image["types"]:

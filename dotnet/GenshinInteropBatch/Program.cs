@@ -17,7 +17,7 @@ using var document = JsonDocument.Parse(File.ReadAllText(args[0]));
 var metadata = document.RootElement;
 if (metadata.GetProperty("format").GetString() != "genshin-mhy-verified-subset-v1"
     || metadata.GetProperty("exe_sha256").GetString()
-    != "08a3086d5f3fe695f01dab61efa42e442006b18e5e475b2520df356f6a073b7d")
+    != "b3001fc110b63e0e0ce24a77386e71d0eefaffaae244ea0c72645a659cb5ea6e")
     throw new InvalidDataException("Metadata export does not match the inspected Genshin build");
 
 var batch = new BatchBuilder(metadata, Path.GetFullPath(args[1]));
