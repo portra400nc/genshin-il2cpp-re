@@ -12,13 +12,7 @@ The scripts check their inputs against the game 7.2 build, released on November 
 | `global-metadata.dat` | 83,644,132 | `4ed10538735861ad87b027d30039e2afb92e334f1b4de4f643e17c9c79d19fd7` |
 | `startup-metadata.dat` | 4,116,228 | `2a5fe7adbeb7cba81db69d7c62dee3536615e5b77efa0514c464e9c9e72d93c0` |
 
-The `7.1` branch holds the tools for the previous build, with these hashes:
-
-| File | SHA-256 |
-|---|---|
-| `GenshinImpact.exe` | `08a3086d5f3fe695f01dab61efa42e442006b18e5e475b2520df356f6a073b7d` |
-| `global-metadata.dat` | `05ae04d7a91b91cc880217a56b0b01f3e67f845b06e894216654ec5d160e0da0` |
-| `startup-metadata.dat` | `66c684950af332966887cfd6f5263a05704230999ee290c27d5b3bdb8a713923` |
+The `7.1` branch holds the tools for the previous build.
 
 A new game build re-rolls every obfuscation constant, and can change formulas, header and record field offsets, and the order of record fields. The build constants live in `python/decode_genshin_strings.py`, `python/inspect_genshin_images.py`, `python/inspect_genshin_types.py`, `python/decode_genshin_usages.py`, `python/decode_genshin_generic_classes.py`, and `python/inspect_genshin_generic_insts.py`. The anchors in `python/export_genshin_metadata.py` and the code checks in `python/inspect_genshin_api.py` also name indices and addresses of one build.
 
@@ -26,7 +20,7 @@ A new game build re-rolls every obfuscation constant, and can change formulas, h
 
 | Folder | Contents |
 |---|---|
-| `python/` | Metadata decoding and export, EXE and PE inspection, and memory-dump reading. `decode_genshin_strings.py` holds the build constants the other scripts import, so run the scripts from this folder or with it on `PYTHONPATH`. |
+| `python/` | Metadata decoding and export, EXE and PE inspection, memory-dump reading, and mapping tokens from one build to the next. `decode_genshin_strings.py` holds the build constants the other scripts import, so run the scripts from this folder or with it on `PYTHONPATH`. |
 | `ghidra/` | Headless Ghidra scripts that decompile or inspect specific native functions. |
 | `dotnet/GenshinInteropBatch/` | Builds dummy assemblies from the metadata JSON and runs the pinned Il2CppInterop generator on them. |
 | `dotnet/GenshinDumpWriter/` | Writes `dump.cs`, `names.json`, and a Ghidra script that labels functions, all from the dummy assemblies. |
@@ -114,6 +108,46 @@ The output folder holds the following files:
 `certain` pairs follow from compiler naming rules. `inferred` pairs come from overrides, which keep their base method's parameter names in about 94% of plain-named cases, or from the literal rules. Two tokens cannot stand for the same name, so when accepted pairs collide, only the best-supported one is kept, and the others are marked `collision`.
 
 Each Python script prints its usage with `--help`, except `inspect_unity_pe.py`, which takes the EXE path and an optional function RVA.
+
+## Moving code to a new game build
+
+Each game build re-rolls every token, so code that names game classes and members by token, such as a mod, stops compiling or binds to unrelated members. Plain names such as `UnityEngine.*` and `MoleMole.*` stay. One original name still has one token per build, so a token map from the old build to the new one fixes every use of a token at once.
+
+1. Run the name-recovery steps above for both builds, each into its own output folder, for example `out/old` and `out/new`. Keep each build's `GenshinImpact.exe`.
+
+2. List the tokens your code uses.
+
+   ```sh
+   grep -rhoE '\b[A-Z]{11}\b' --include='*.cs' path/to/your/code | sort -u > out/my-tokens.txt
+   ```
+
+3. Map the tokens. The run takes about half an hour and 10 GB of memory.
+
+   ```sh
+   python3 python/map_genshin_tokens.py out/old out/new out/token-map.json --tokens out/my-tokens.txt \
+     --old-exe game/old/GenshinImpact.exe --new-exe game/new/GenshinImpact.exe
+   ```
+
+   `map_genshin_tokens.py` pairs the classes, methods and fields of the two builds from plain names, recovered names, string literals, member order, signatures, metadata usages and method code. `genshin_token_checks.py` then checks each answer for the listed tokens independently: the classes that use the token, the method's signature, its callers and callees, the field a one-line getter reads, and the offsets that a class's own methods use for a field. Each token in `token-map.json` gets a confidence:
+
+   | Confidence | Meaning |
+   |---|---|
+   | `high` | A check agrees with the matcher's answer. |
+   | `medium`, `low` | Only the matcher answered, or the checks proposed an answer for a token the matcher left open. |
+   | `conflict` | A check prefers another token. Review it. |
+   | `none` | No answer. |
+
+   Same-shaped members, such as two getters of one class with the same return type, are where the matcher goes wrong, and the checks catch most of those cases. Review every token that is not `high` before you rely on it, for example by comparing the candidates' code. Put each reviewed answer in an overrides file: `{"OLDTOKEN": {"new": "NEWTOKEN", "evidence": "why"}}`.
+
+4. Rewrite the source. It applies `high` answers and your overrides, and stops without changing anything if a file uses a token that has neither.
+
+   ```sh
+   python3 python/apply_genshin_tokens.py out/token-map.tsv --overrides out/overrides.json $(grep -rlE '\b[A-Z]{11}\b' --include='*.cs' path/to/your/code)
+   ```
+
+5. Re-derive whatever the build hard-codes beyond names: code RVAs, field offsets and byte patterns. `out/token-map.methods.tsv` lists each method pair with both code RVAs. `genshin_layout.py` computes a class's field offsets from the metadata export. Check a computed offset against code or a runtime lookup before you write to it.
+
+6. Compile against the new build's interop assemblies.
 
 ## License
 
