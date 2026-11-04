@@ -11,12 +11,12 @@ public class InspectGenshinHandles extends GhidraScript {
     @Override
     public void run() throws Exception {
         long[] addresses = {
-            0x1404B1810L, 0x1404B1850L, 0x1404B1890L,
-            0x1404B1950L, 0x1404B1980L, 0x1404B19A0L, 0x14051C390L,
-            0x14051C4A0L,
-            0x1404B19B0L, 0x14051B980L, 0x140525C70L,
-            0x1404B1AE0L, 0x1404B1B40L, 0x1404B1BA0L, 0x1404B1BD0L,
-            0x140557720L
+            0x1404BC4C0L, 0x1404BC4F0L, 0x1404BC530L,
+            0x1404BC5F0L, 0x1404BC620L, 0x1404BC640L, 0x140526E20L,
+            0x140526F40L,
+            0x1404BC650L, 0x140526430L, 0x1405307A0L,
+            0x1404BC780L, 0x1404BC7E0L, 0x1404BC840L, 0x1404BC870L,
+            0x140562230L
         };
         DecompInterface decompiler = new DecompInterface();
         decompiler.openProgram(currentProgram);

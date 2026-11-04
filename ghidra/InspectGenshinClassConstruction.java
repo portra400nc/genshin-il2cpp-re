@@ -11,10 +11,10 @@ public class InspectGenshinClassConstruction extends GhidraScript {
     @Override
     public void run() throws Exception {
         long[] addresses = {
-            0x14050D9C0L, // class from type definition
-            0x14051CD50L, // class from type definition index
-            0x1405158B0L, // image/name class lookup
-            0x1404B1460L  // class namespace getter
+            0x140518510L, // class from type definition
+            0x140527830L, // class from type definition index
+            0x1405203C0L, // image/name class lookup
+            0x1404BC110L  // class namespace getter
         };
         DecompInterface decompiler = new DecompInterface();
         decompiler.openProgram(currentProgram);

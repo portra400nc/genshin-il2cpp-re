@@ -11,10 +11,10 @@ public class InspectGenshinAssetBundle extends GhidraScript {
     @Override
     public void run() throws Exception {
         long[] addresses = {
-            0x159c10f90L, // AssetBundle.LoadFromMemoryAsync(binary, crc, format)
-            0x159c10fa0L, // AssetBundle.LoadFromMemoryAsync(binary)
-            0x159c111d0L, // AssetBundle.LoadFromMemoryMHY
-            0x159c15650L  // Resources.GetBuiltinResource(type, path)
+            0x15a26c500L, // AssetBundle.LoadFromMemoryAsync(binary, crc, format)
+            0x15a26c510L, // AssetBundle.LoadFromMemoryAsync(binary)
+            0x15a26c740L, // AssetBundle.LoadFromMemoryMHY
+            0x15a270c00L  // Resources.GetBuiltinResource(type, path)
         };
         DecompInterface decompiler = new DecompInterface();
         decompiler.openProgram(currentProgram);

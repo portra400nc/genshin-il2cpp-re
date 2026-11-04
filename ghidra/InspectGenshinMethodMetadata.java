@@ -11,13 +11,13 @@ public class InspectGenshinMethodMetadata extends GhidraScript {
     @Override
     public void run() throws Exception {
         long[] addresses = {
-            0x1404B1D40L, // return type
-            0x1404B1D60L, // name
-            0x1404B1DC0L, // parameter type
-            0x1404B1ED0L, // parameter name
-            0x1405281A0L, // metadata fallback for name
-            0x1405282B0L, // metadata fallback for return type
-            0x140528560L  // metadata fallback for parameter array
+            0x1404BC9E0L, // return type
+            0x1404BCA00L, // name
+            0x1404BCB70L, // parameter type
+            0x1404BCA60L, // parameter name
+            0x140532E60L, // metadata fallback for name
+            0x140532F70L, // metadata fallback for return type
+            0x140533240L  // metadata fallback for parameter array
         };
         DecompInterface decompiler = new DecompInterface();
         decompiler.openProgram(currentProgram);

@@ -7,8 +7,8 @@ import re
 import struct
 from pathlib import Path
 
-from decode_genshin_strings import BODY_FILE_OFFSET, EXE_SHA256, METADATA_SHA256, sha256
-from inspect_genshin_types import TYPE_STRIDE
+from decode_genshin_strings import BODY_FILE_OFFSET, EXE_SHA256, HEADER_FILE_OFFSET, METADATA_SHA256, sha256
+from inspect_genshin_types import TYPE_STRIDE, type_section
 
 
 HEADER = re.compile(
@@ -152,7 +152,7 @@ def main() -> None:
         if len(details) != 3 or {match.group(1) for match in details} != set(IMAGE):
             raise ValueError("incomplete injector class details")
         metadata_bytes = None
-        type_section = None
+        types = None
         if args.exe or args.metadata:
             if not args.exe or not args.metadata:
                 raise ValueError("both --exe and --metadata are needed to check raw class records")
@@ -160,8 +160,7 @@ def main() -> None:
                 raise ValueError("EXE or metadata differs from the inspected build")
             exe_bytes = args.exe.read_bytes()
             metadata_bytes = args.metadata.read_bytes()
-            header_offset = 0x27D3BD0
-            type_section = (u32(exe_bytes, header_offset + 0xB4) + 0xEC48AB9F) & 0xFFFFFFFF
+            types = type_section(exe_bytes[HEADER_FILE_OFFSET:HEADER_FILE_OFFSET + 0x210])[0]
         for match in details:
             name, sampled, raw, metadata_address, definition = match.groups()
             class_address, header, _ = headers[name]
@@ -173,7 +172,7 @@ def main() -> None:
                     or len(definition) != TYPE_STRIDE:
                 raise ValueError(f"{name} class detail differs from its header")
             if metadata_bytes is not None:
-                offset = BODY_FILE_OFFSET + type_section + definitions[name]["index"] * TYPE_STRIDE
+                offset = BODY_FILE_OFFSET + types + definitions[name]["index"] * TYPE_STRIDE
                 if definition != metadata_bytes[offset:offset + TYPE_STRIDE]:
                     raise ValueError(f"{name} native metadata record differs from the copied file")
 

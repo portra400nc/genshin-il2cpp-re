@@ -10,7 +10,7 @@ import ghidra.program.model.listing.Function;
 public class InspectGenshinComponentHandles extends GhidraScript {
     @Override
     public void run() throws Exception {
-        long[] addresses = {0x159BE63E0L, 0x159BE63F0L, 0x159BE5E10L};
+        long[] addresses = {0x15A2418F0L, 0x15A241900L, 0x15A241320L};
         DecompInterface decompiler = new DecompInterface();
         decompiler.openProgram(currentProgram);
         try {

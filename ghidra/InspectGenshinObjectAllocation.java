@@ -10,7 +10,7 @@ import ghidra.program.model.listing.Function;
 public class InspectGenshinObjectAllocation extends GhidraScript {
     @Override
     public void run() throws Exception {
-        long[] addresses = {0x1404B1F30L, 0x140529A10L, 0x14055A0B0L};
+        long[] addresses = {0x1404BCBD0L, 0x1405346E0L, 0x140564BC0L};
         DecompInterface decompiler = new DecompInterface();
         decompiler.openProgram(currentProgram);
         try {
