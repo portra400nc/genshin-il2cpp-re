@@ -15,9 +15,23 @@ Sites are paired from these signals, strongest first:
 - usage lists of paired methods, aligned by position,
 - parameter, return, field and parent types of paired sites.
 
-Inputs per build: the metadata export (GenshinAllImagesAPI.json) and the
-GenshinNames folder from recover_genshin_names.py (names.tsv, usages.json,
-literals.json, generic-types.json).
+With both EXEs given, method code joins in: same-length bodies that mostly
+match, and the callees of paired functions by call position.
+
+After pairing, genshin_token_checks.py checks every answer independently (the
+classes that use each token) and, for the tokens passed with --tokens, also by
+signature, call graph, one-line getters and field offsets in code. Each token
+gets a confidence: high (a check agrees), medium or low (the matcher alone, or
+a proposal from the checks for a token the matcher left open), conflict (a check
+prefers another token; review it by hand) or none.
+
+Inputs per build: the output folder of the README's name-recovery steps, which
+holds GenshinAllImagesAPI.json, GenshinUsages.json, literals.json,
+GenshinGenericTypes.json and GenshinNames/names.tsv, and optionally the build's
+GenshinImpact.exe.
+
+Outputs: the JSON report for --tokens, a TSV of every mapped token beside it,
+and a TSV of the method pairs with their code RVAs.
 """
 
 import argparse
@@ -28,6 +42,8 @@ import json
 import re
 import struct
 from pathlib import Path
+
+from genshin_token_checks import Checker
 
 
 TOKEN = re.compile(r"[A-Z]{11}")
@@ -59,6 +75,8 @@ class Code:
         optional = pe + 24
         table = optional + struct.unpack_from("<H", self.data, pe + 20)[0]
         self.sections = [struct.unpack_from("<IIII", self.data, table + 40 * i + 8) for i in range(count)]
+        self.section_flags = [struct.unpack_from("<IIII", self.data, table + 40 * i + 8)
+                              + (struct.unpack_from("<I", self.data, table + 40 * i + 36)[0],) for i in range(count)]
         rva, size = struct.unpack_from("<II", self.data, optional + 112 + 8 * 3)
         start = self.offset(rva)
         ranges = sorted(set(struct.unpack_from("<II", self.data, start + 12 * i) for i in range(size // 12)))
@@ -66,6 +84,13 @@ class Code:
         self.ends = [b for _, b in ranges]
         self.cache: dict[int, bytes | None] = {}
         self.start_set = set(self.starts)
+        self.known = self.starts
+
+    def learn_starts(self, rvas) -> None:
+        """Adds function starts that .pdata lacks, such as leaf methods, so their bodies end at the next known start."""
+        self.start_set |= set(rvas)
+        self.known = sorted(self.start_set)
+        self.cache.clear()
 
     def callees(self, rva: int | None) -> list[int]:
         """Targets of the rel32 calls and jumps in a function body that land on a function start, in code order."""
@@ -94,9 +119,14 @@ class Code:
         result = None
         i = bisect.bisect_right(self.starts, rva) - 1
         if i >= 0 and self.starts[i] == rva:
+            end = self.ends[i]
+        else:
+            j = bisect.bisect_right(self.known, rva)
+            end = min(self.known[j], rva + 4096) if j < len(self.known) and rva in self.start_set else None
+        if end is not None:
             try:
                 start = self.offset(rva)
-                result = bytes(self.data[start:start + self.ends[i] - rva])
+                result = bytes(self.data[start:start + end - rva])
             except ValueError:
                 result = None
         self.cache[rva] = result
@@ -124,9 +154,9 @@ def code_similarity(old: bytes | None, new: bytes | None) -> float | None:
 
 
 class Build:
-    def __init__(self, api_path: Path, names_dir: Path, exe: Path | None = None):
+    def __init__(self, folder: Path, exe: Path | None = None):
         self.code = Code(exe) if exe else None
-        api = json.loads(api_path.read_text())
+        api = json.loads((folder / "GenshinAllImagesAPI.json").read_text())
         self.types: dict[int, dict] = {}
         self.image_of: dict[int, str] = {}
         self.methods: dict[int, dict] = {}
@@ -151,10 +181,10 @@ class Build:
                 if type_def["parent"]:
                     self.remember_ref(type_def["parent"])
         del api
-        self.generics = {int(k): v for k, v in json.loads((names_dir / "generic-types.json").read_text())["types"].items()}
-        self.literals = {row["index"]: row["value"] for row in json.loads((names_dir / "literals.json").read_text())}
+        self.generics = {int(k): v for k, v in json.loads((folder / "GenshinGenericTypes.json").read_text())["types"].items()}
+        self.literals = {row["index"]: row["value"] for row in json.loads((folder / "literals.json").read_text())}
         self.usages: dict[int, list[tuple[int, int]]] = {}
-        for function in json.loads((names_dir / "usages.json").read_text())["functions"]:
+        for function in json.loads((folder / "GenshinUsages.json").read_text())["functions"]:
             pairs = [(kind, index) for kind, index, _slot in function["usages"]]
             for method_index in function["methods"]:
                 self.usages[method_index] = pairs
@@ -162,8 +192,10 @@ class Build:
         for index, method in self.methods.items():
             if method["code_rva"]:
                 self.by_code[method["code_rva"]].append(index)
+        if self.code:
+            self.code.learn_starts(self.by_code)
         self.recovered: dict[str, str] = {}
-        for line in (names_dir / "names.tsv").read_text().splitlines()[1:]:
+        for line in (folder / "GenshinNames" / "names.tsv").read_text().splitlines()[1:]:
             token, name, tier = line.split("\t")[:3]
             if tier in ("certain", "inferred"):
                 self.recovered[token] = name
@@ -615,7 +647,7 @@ class Matcher:
             if top / sum(counter.values()) >= 0.75 and claimed.setdefault(new, old) == old:
                 self.token_map[old] = new
 
-    def run(self, log) -> None:
+    def run(self, log, rounds: int = ROUNDS) -> None:
         self.seed_plain_types()
         self.seed_recovered_names()
         self.recovered_votes = {k: collections.Counter(v) for k, v in self.token_votes.items()}
@@ -623,7 +655,7 @@ class Matcher:
         self.token_map = {old: counter.most_common(1)[0][0] for old, counter in self.token_votes.items()}
         self.seed_literals()
         self.methods.resolve(min_share=0.99)
-        for round_number in range(ROUNDS):
+        for round_number in range(rounds):
             self.seed_structure()
             self.propagate_types()
             self.propagate_methods()
@@ -689,36 +721,46 @@ class Matcher:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("old_api", type=Path)
-    parser.add_argument("old_names", type=Path, help="GenshinNames folder of the old build")
-    parser.add_argument("new_api", type=Path)
-    parser.add_argument("new_names", type=Path, help="GenshinNames folder of the new build")
-    parser.add_argument("output", type=Path, help="JSON file to write")
-    parser.add_argument("--tokens", type=Path, help="text file of old tokens to report; all mapped tokens when omitted")
+    parser.add_argument("old", type=Path, help="output folder of the old build")
+    parser.add_argument("new", type=Path, help="output folder of the new build")
+    parser.add_argument("output", type=Path, help="JSON report to write; the TSVs go beside it")
+    parser.add_argument("--tokens", type=Path, help="text file of the old tokens to report and check in depth, "
+                        "for example every token a mod's source uses")
+    parser.add_argument("--rounds", type=int, default=ROUNDS, help="most propagation rounds to run")
     parser.add_argument("--old-exe", type=Path, help="old GenshinImpact.exe, to compare method code")
     parser.add_argument("--new-exe", type=Path, help="new GenshinImpact.exe, to compare method code")
     args = parser.parse_args()
 
     log = lambda text: print(text, flush=True)
     log("loading the old build")
-    old = Build(args.old_api, args.old_names, args.old_exe)
+    old = Build(args.old, args.old_exe)
     log("loading the new build")
-    new = Build(args.new_api, args.new_names, args.new_exe)
+    new = Build(args.new, args.new_exe)
     matcher = Matcher(old, new)
-    matcher.run(log)
+    matcher.run(log, args.rounds)
 
+    checker = Checker(matcher, log)
     if args.tokens:
-        wanted = sorted({line.strip() for line in args.tokens.read_text().split() if is_token(line.strip())})
+        wanted = sorted({word for word in args.tokens.read_text().split() if is_token(word)})
     else:
         wanted = sorted(matcher.token_map)
-    rows = [matcher.describe(token) for token in wanted]
-    with args.output.with_suffix(".all.tsv").open("w") as table:
-        table.write("old\tnew\tconfidence\tvotes\tsites\n")
-        for token in sorted(matcher.token_map):
-            row = matcher.describe(token, explain=False)
-            sites = ";".join(f"{s['site']}:{s['votes']:g}/{s['runner_up']:g}" for s in row["sites"][:2])
-            table.write(f"{token}\t{row['new']}\t{row['confidence']}\t{row['total_votes']:g}\t{sites}\n")
-    args.output.write_text(json.dumps({"format": "genshin-token-map-v1", "tokens": rows}, indent=1))
+    log(f"checking {len(wanted)} tokens")
+    rows = []
+    for token in wanted:
+        row = matcher.describe(token)
+        row.update(checker.verdict(token, row["confidence"], row["new"], deep=bool(args.tokens)))
+        rows.append(row)
+    args.output.write_text(json.dumps({"format": "genshin-token-map-v2", "tokens": rows}, indent=1))
+    with args.output.with_suffix(".tsv").open("w") as table:
+        table.write("old\tnew\tconfidence\tmatcher\tchecks\n")
+        checked = {row["old"]: row for row in rows}
+        for token in sorted(set(matcher.token_map) | set(wanted)):
+            row = checked.get(token)
+            if row is None:
+                row = matcher.describe(token, explain=False)
+                row.update(checker.verdict(token, row["confidence"], row["new"], deep=False))
+            checks = ";".join(f"{name}={c['verdict']}:{c['token']}" for name, c in row["checks"].items())
+            table.write(f"{token}\t{row['new'] or ''}\t{row['confidence']}\t{row['matcher']}\t{checks}\n")
     with args.output.with_suffix(".methods.tsv").open("w") as table:
         table.write("old_index\tnew_index\told_rva\tnew_rva\told_owner\told_name\tnew_owner\tnew_name\tvotes\trunner_up\n")
         for old_index, new_index in sorted(matcher.methods.forward.items()):
